@@ -10,10 +10,10 @@ from keras.utils import plot_model
 from generator import train_generator_queue, shutdown_generator, load_samples
 
 sample_x = load_samples('validation/input', set_channels_count=3)
-sample_y = load_samples('validation/output', aug_inv=0)
+sample_y = load_samples('validation/output')
 
 validate=True
-train_queue = train_generator_queue(2, (['sam'], ['sam']), (512, 512), 10, every_flip=True, root='..')
+train_queue = train_generator_queue(1, (['sam'], ['sam']), (64, 64), 10, every_flip=True, root='..')
 train_data = None
 
 root_code = [4, 3, 1,
@@ -44,7 +44,7 @@ def build(code):
     data = Conv2D(code[0], (code[1], code[2]), padding='same', activation='relu', name='symm_find')(data)
     code = code[3:]
     data = Conv2D(code[0], (code[1], code[2]), padding='same', activation='relu', name='seq_find')(data)
-    outputs = Conv2D(2, (1, 1), padding='same', name='decisive', activation='softmax')(data)
+    outputs = Conv2D(1, (1, 1), padding='same', name='decisive', activation='sigmoid')(data)
     return models.Model(inputs=inputs, outputs=outputs)
 
 def code_to_name(code):
@@ -66,8 +66,8 @@ def train(code, queue, epochs=20):
     model.summary()
     with open('models/' + model_name + '.json', 'w') as outfile:
         outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
-    optimizer = Adagrad() # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
-    model.compile(loss="categorical_crossentropy", optimizer=optimizer, metrics=['accuracy'])
+    optimizer = Adagrad(lr=1E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
+    model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=['accuracy'])
 
     def train_on_queue(queue, begin_epoch, end_epoch, best_loss, updates=50):
         epoch = begin_epoch
