@@ -1,4 +1,6 @@
 import sys
+from os import listdir
+from os.path import join
 from time import sleep, time
 from keras import models
 from keras.layers import Input, Conv2D, Activation, concatenate, Reshape, Permute, MaxPooling2D, UpSampling2D, BatchNormalization, GlobalMaxPooling2D, Dropout, ZeroPadding2D
@@ -15,8 +17,21 @@ train_queue = train_generator_queue(2, (['sam'], ['sam']), (512, 512), 10, every
 train_data = None
 
 root_code = [4, 3, 1,
-             4, 1, 7,
-             4, 3, 3]
+             4, 1, 15,
+             8, 3, 3]
+
+def load_models(folder):
+    models = {}
+    for f in listdir(folder):
+        if f.endswith('_state.json'):
+            try:
+                s = json.load(open(join(folder, f)))
+                models.update({f[:-11] : s})
+            except json.JSONDecodeError:
+                print('Unable to read model state: ' + f)
+    return models
+
+models = load_models('models')
 
 
 def build(code):
