@@ -3,6 +3,7 @@ import sys
 from math import sin, cos, pi
 from os import listdir
 from os.path import join
+from skimage import img_as_float
 from skimage.io import imread
 from skimage.transform import rotate, rescale
 import random
@@ -30,7 +31,7 @@ def train_generator_queue(out_channels, classes, size, batch_size=None, dump_mem
             fns += [join(c, f) for f in listdir(join(folder, c)) if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.jpeg')]
 
         def load(fn):
-            img = imread(folder + fn) / 255.0
+            img = img_as_float(imread(folder + fn))
             assert img.shape[0] > size[0] and img.shape[1] > size[1]
             return img
         return list(map(load, fns))
@@ -216,7 +217,7 @@ def inverse_channel(image, channel):
 
 
 def load_samples(folder, inv_channel=None, set_channels_count=None, aug_inv=None):
-    result = [imread(join(folder, f)) for f in listdir(folder) if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.jpeg')]
+    result = [img_as_float(imread(join(folder, f))) for f in listdir(folder) if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.jpeg')]
     for i in range(len(result)):
         shape = result[i].shape
         if len(shape) == 2:  # единственный канал
@@ -227,4 +228,4 @@ def load_samples(folder, inv_channel=None, set_channels_count=None, aug_inv=None
         result = list(map(lambda i: i[:, :, :3], result))
     if aug_inv is not None:
         result = list(map(lambda i: np.concatenate((i, 1.0 - i[:, :, aug_inv:1]), axis=2), result))
-    return np.array(result) / 255.0
+    return np.array(result)
