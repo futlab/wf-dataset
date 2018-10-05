@@ -5,7 +5,7 @@ from generator import train_generator
 from pympler import summary, muppy
 
 
-size = (512, 512)
+size = (64, 64)
 
 im = plt.imshow(np.zeros((size[0] * 2, size[1] * 2)))
 plt.ion()

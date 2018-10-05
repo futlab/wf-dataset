@@ -20,18 +20,20 @@ root_code = [4, 3, 1,
              4, 1, 15,
              8, 3, 3]
 
+
 def load_models(folder):
-    models = {}
+    model_states = {}
     for f in listdir(folder):
         if f.endswith('_state.json'):
             try:
                 s = json.load(open(join(folder, f)))
-                models.update({f[:-11] : s})
+                model_states.update({f[:-11] : s})
             except json.JSONDecodeError:
                 print('Unable to read model state: ' + f)
-    return models
+    return model_states
 
-models = load_models('models')
+
+model_states = load_models('models')
 
 
 def build(code):

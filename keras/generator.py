@@ -124,7 +124,7 @@ def train_generator_queue(out_channels, classes, size, batch_size=None, dump_mem
                 results = []
                 metrics = []
                 msum = np.ones(out_channels)
-                for t in range(3):
+                while len(results) < 20:
                     n = random.randint(0, len(inputs) - 1)
                     i = inputs[n]
                     o = outputs[n]
@@ -147,11 +147,13 @@ def train_generator_queue(out_channels, classes, size, batch_size=None, dump_mem
                             ip = np.flip(ip, 1)
                             op = np.flip(op, 1)
                         m = np.sum(op, axis=(0, 1))
+                        if m.sum() == 0:
+                            continue
                         msum += m
                         metrics.append((len(results), m))
                         results.append((ip, op))
                 metrics = sorted(metrics, key=lambda m: -np.sum((m[1] / msum)[:out_channels - 1]))
-                metrics = metrics[: int(len(metrics) * 0.75)]
+                metrics = metrics[: int(len(metrics) * 0.5)] # Reduce number of empty outputs
                 random.shuffle(metrics)
                 for a in metrics:
                     r = results[a[0]]
