@@ -1,4 +1,5 @@
 import sys
+import random
 from os import listdir
 from os.path import join
 from time import sleep, time
@@ -12,11 +13,13 @@ from generator import train_generator_queue, shutdown_generator, load_samples
 sample_x = load_samples('validation/input', set_channels_count=3)
 sample_y = load_samples('validation/output')
 
-validate=True
-train_queue = train_generator_queue(1, (['sam'], ['sam']), (64, 64), 10, every_flip=True, root='..')
+validate = True
+classes = ['mrsk']
+max_epochs = 200
+train_queue = train_generator_queue(1, (classes, classes), (64, 64), 32, every_flip=True, root='..')
 train_data = None
 
-root_code = [4, 3, 1,
+root_code = [2, 3, 1,
              4, 1, 15,
              8, 3, 3]
 
@@ -33,7 +36,17 @@ def load_models(folder):
     return model_states
 
 
+def get_best_models(ms, trim=10):
+    def bl(m):
+        return ms[m]['best_loss']
+    bm = sorted(list(ms.keys()), key=bl)
+    if trim is not None and len(bm) > trim:
+        bm = bm[:trim]
+    return bm
+
+
 model_states = load_models('models')
+best_models = get_best_models(model_states)
 
 
 def build(code):
@@ -47,6 +60,20 @@ def build(code):
     outputs = Conv2D(1, (1, 1), padding='same', name='decisive', activation='sigmoid')(data)
     return models.Model(inputs=inputs, outputs=outputs)
 
+
+def mutate(code):
+    n = random.randint(0, len(code) - 1)
+    step = 1 if n % 3 == 0 else 2
+    if code[n] == 1 or random.random() > 0.7:
+        code[n] += step
+    else:
+        code[n] -= step
+    if n % 3 != 0 and code[n] > 15:
+        code[n] = 13
+    print('Mutated %d' % n)
+    return code
+
+
 def code_to_name(code):
     name = ''
     while len(code) > 0:
@@ -56,20 +83,38 @@ def code_to_name(code):
         code = code[3:]
     return name;
 
-def train(code, queue, epochs=20):
+
+def train(code, queue, models_folder='models', parent=None, epochs=20):
     model_name = code_to_name(code)
-    state = {'epoch': 0, 'size': 128}
-    epoch = 0
-    best_loss = 1E6
-    # TODO: verify model existance
-    model = build(code)
-    model.summary()
-    with open('models/' + model_name + '.json', 'w') as outfile:
-        outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
+    state = model_states.get(model_name, None)
+    if state is not None:
+        epoch = state.get('epoch', 0)
+        best_loss = state.get('best_loss', 1E6)
+        if epoch >= max_epochs:
+            print('Model %s: skipping' % model_name)
+            return best_loss
+        print('Model %s: loading' % model_name)
+        with open(join(models_folder, model_name + '.json')) as model_file:
+            model = models.model_from_json(model_file.read())
+        try:
+            model.load_weights(join(models_folder, model_name + '.hdf5'))
+            print('Weights loaded')
+        except OSError:
+            pass
+    else:
+        print('Model %s: build new' % model_name)
+        model = build(code)
+        model.summary()
+        state = {'epoch': 0, 'code': code, 'parent': parent}
+        epoch = 0
+        best_loss = 1E6
+        with open(join(models_folder, model_name + '.json'), 'w') as outfile:
+            outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
+
     optimizer = Adagrad(lr=1E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
     model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=['accuracy'])
 
-    def train_on_queue(queue, begin_epoch, end_epoch, best_loss, updates=50):
+    def train_on_queue(queue, begin_epoch, end_epoch, best_loss, updates=100):
         epoch = begin_epoch
         global train_data
         u, g = 0, 0
@@ -88,7 +133,7 @@ def train(code, queue, epochs=20):
                     if validation_loss < best_loss:
                         print('Best loss!')
                         best_loss = validation_loss
-                        model.save_weights('models/' + model_name + '_best.hdf5')
+                        model.save_weights(join(models_folder, model_name + '_best.hdf5'))
                 else:
                     print('Epoch %d completed. tl: %.3f, gets: %d, time: %.1fs'
                           % (epoch, loss, g, time() - t))
@@ -115,14 +160,24 @@ def train(code, queue, epochs=20):
         epoch += 5
         #h = train(1)
         state.update({'epoch': epoch, 'best_loss': best_loss})
-        model.save_weights('models/' + model_name + '.hdf5')
+        model.save_weights(join(models_folder, model_name + '.hdf5'))
         json_data = json.dumps(state, indent=2)
-        with open('models/' + model_name + '_state.json', 'w') as outfile:
+        with open(join(models_folder, model_name + '_state.json'), 'w') as outfile:
             outfile.write(json_data)
+    model_states.update({model_name : state})
+    return best_loss
 
 
 try:
-    train(root_code, train_queue, epochs=200)
+    code = root_code
+    parent_name = None
+    while True:
+        train(code, train_queue, parent=parent_name, epochs=200)
+        best_models = get_best_models(model_states)
+        parent_name = best_models[random.randint(0, len(best_models) - 1)]
+        print('Model %s: mutate' % parent_name)
+        code = mutate(model_states[parent_name]['code'])
+
     shutdown_generator()
 except Exception as e: # KeyboardInterrupt or MemoryError or OpError:
     shutdown_generator()

@@ -1,6 +1,7 @@
 import numpy as np
 import json
 from argparse import ArgumentParser
+from skimage import img_as_float
 from skimage.io import imread, imsave
 from os import listdir
 from os.path import join, isfile
@@ -37,7 +38,7 @@ for fn in listdir(args.input):
     ifn = join(args.input, fn)
     if isfile(ifn) and (fn.endswith('.jpg') or fn.endswith('.png') or fn.endswith('.jpeg')):
         print('Processing: ' + ifn)
-        image = np.array([imread(ifn)]) / 255.0
+        image = img_as_float(np.array([imread(ifn)]))
         image = image[:, :, :, :3]
         size = image.shape
         h = int(size[1] / align) * align
