@@ -24,9 +24,9 @@ def get_best_models(ms, trim=10):
     return bm
 
 
-models = load_models('models')
+models = load_models('models-sam')
 best = get_best_models(models, None)
 for i in range(0, len(best) - 1):
     model_name = best[i]
     model = models[model_name]
-    print('%3d: (vl %.4f) %s <- %s (epochs: %d)' % (i + 1, model.get('best_loss', None), model_name, model.get('parent', '???'), model.get('epoch', '0')))
+    print('%3d: (vl %.4f) %s <- %s (epochs: %d, params: %d)' % (i + 1, model.get('best_loss', None), model_name, model.get('parent', '???'), model.get('epoch', '0'), model.get('param_count', 0)))

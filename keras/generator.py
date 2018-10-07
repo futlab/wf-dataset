@@ -21,7 +21,7 @@ def shutdown_generator():
     shutdown = True
 
 
-def train_generator_queue(out_channels, classes, size, batch_size=None, dump_mem=False, every_flip=False, root=None, workers=1):
+def train_generator_queue(out_channels, classes, size, batch_size=None, dump_mem=False, every_flip=False, root=None, workers=1, gain=None):
 
     def load_classes(folder, class_list):
         if root is not None:
@@ -42,6 +42,10 @@ def train_generator_queue(out_channels, classes, size, batch_size=None, dump_mem
         return i[:, :, :3]
 
     def prep_out(o):
+        if gain is not None:
+            o *= gain
+            o[o > 1.0] = 1.0
+
         if len(o.shape) == 2: # единственный канал
             result = np.reshape(o, (o.shape[0], o.shape[1], 1))
             if out_channels == 1:
@@ -216,12 +220,16 @@ def inverse_channel(image, channel):
     return np.concatenate(result, 2)
 
 
-def load_samples(folder, inv_channel=None, set_channels_count=None, aug_inv=None):
+def load_samples(folder, inv_channel=None, set_channels_count=None, aug_inv=None, gain=None):
     result = [img_as_float(imread(join(folder, f))) for f in listdir(folder) if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.jpeg')]
     for i in range(len(result)):
         shape = result[i].shape
         if len(shape) == 2:  # единственный канал
             result[i] = np.reshape(result[i], (shape[0], shape[1], 1))
+        if gain is not None:
+            r = result[i] * gain
+            r[r > 1.0] = 1.0
+            result[i] = r
     if inv_channel is not None:
         result = list(map(lambda i: inverse_channel(i, inv_channel), result))
     if set_channels_count is not None:

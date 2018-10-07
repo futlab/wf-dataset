@@ -7,16 +7,18 @@ from keras import models
 from keras.layers import Input, Conv2D, Activation, concatenate, Reshape, Permute, MaxPooling2D, UpSampling2D, BatchNormalization, GlobalMaxPooling2D, Dropout, ZeroPadding2D
 from keras.optimizers import SGD, Adagrad
 import json
+from mutator import mutate, random_model, model_to_name, analyse_model
 from keras.utils import plot_model
 from generator import train_generator_queue, shutdown_generator, load_samples
 
-sample_x = load_samples('validation/input', set_channels_count=3)
-sample_y = load_samples('validation/output')
+models_dir = 'models-sam'
+sample_x = load_samples('validation-sam/input', set_channels_count=3)
+sample_y = load_samples('validation-sam/output', gain=2.0)
 
 validate = True
-classes = ['mrsk']
+classes = ['sam']
 max_epochs = 200
-train_queue = train_generator_queue(1, (classes, classes), (64, 64), 32, every_flip=True, root='..')
+train_queue = train_generator_queue(1, (classes, classes), (32, 32), 40, every_flip=True, root='..', gain=2.0)
 train_data = None
 
 root_code = [2, 3, 1,
@@ -45,47 +47,12 @@ def get_best_models(ms, trim=10):
     return bm
 
 
-model_states = load_models('models')
+model_states = load_models(models_dir)
 best_models = get_best_models(model_states)
 
 
-def build(code):
-    inputs = Input(shape=(None, None, 3))
-    data = Dropout(0.1)(inputs)
-    data = Conv2D(code[0], (code[1], code[2]), padding='same', activation='relu', name='prefilter')(data)
-    code = code[3:]
-    data = Conv2D(code[0], (code[1], code[2]), padding='same', activation='relu', name='symm_find')(data)
-    code = code[3:]
-    data = Conv2D(code[0], (code[1], code[2]), padding='same', activation='relu', name='seq_find')(data)
-    outputs = Conv2D(1, (1, 1), padding='same', name='decisive', activation='sigmoid')(data)
-    return models.Model(inputs=inputs, outputs=outputs)
-
-
-def mutate(code):
-    n = random.randint(0, len(code) - 1)
-    step = 1 if n % 3 == 0 else 2
-    if code[n] == 1 or random.random() > 0.7:
-        code[n] += step
-    else:
-        code[n] -= step
-    if n % 3 != 0 and code[n] > 15:
-        code[n] = 13
-    print('Mutated %d' % n)
-    return code
-
-
-def code_to_name(code):
-    name = ''
-    while len(code) > 0:
-        if name != '':
-            name = name + '-'
-        name = name + '%X%X%X' % tuple(code[:3])
-        code = code[3:]
-    return name;
-
-
-def train(code, queue, models_folder='models', parent=None, epochs=20):
-    model_name = code_to_name(code)
+def train(model, queue, models_folder='models', parent=None, epochs=20):
+    model_name = model_to_name(model)
     state = model_states.get(model_name, None)
     if state is not None:
         epoch = state.get('epoch', 0)
@@ -102,10 +69,10 @@ def train(code, queue, models_folder='models', parent=None, epochs=20):
         except OSError:
             pass
     else:
-        print('Model %s: build new' % model_name)
-        model = build(code)
+        print('Model %s: new' % model_name)
         model.summary()
-        state = {'epoch': 0, 'code': code, 'parent': parent}
+        state = {'epoch': 0, 'parent': parent}
+        state.update(analyse_model(model))
         epoch = 0
         best_loss = 1E6
         with open(join(models_folder, model_name + '.json'), 'w') as outfile:
@@ -158,7 +125,6 @@ def train(code, queue, models_folder='models', parent=None, epochs=20):
     while state['epoch'] < epochs:
         best_loss = train_on_queue(train_queue, epoch, epoch + 5, best_loss)
         epoch += 5
-        #h = train(1)
         state.update({'epoch': epoch, 'best_loss': best_loss})
         model.save_weights(join(models_folder, model_name + '.hdf5'))
         json_data = json.dumps(state, indent=2)
@@ -169,15 +135,17 @@ def train(code, queue, models_folder='models', parent=None, epochs=20):
 
 
 try:
-    code = root_code
     parent_name = None
     while True:
-        train(code, train_queue, parent=parent_name, epochs=200)
-        best_models = get_best_models(model_states)
-        parent_name = best_models[random.randint(0, len(best_models) - 1)]
-        print('Model %s: mutate' % parent_name)
-        code = mutate(model_states[parent_name]['code'])
-
+        if bool(model_states) and random.random() > 0.1:
+            best_models = get_best_models(model_states)
+            parent_name = best_models[random.randint(0, len(best_models) - 1)]
+            print('Model %s: mutate' % parent_name)
+            current_model = mutate(models_dir, parent_name)
+        else:
+            print('Random model')
+            current_model = random_model()
+        train(current_model, train_queue, parent=parent_name, epochs=200, models_folder=models_dir)
     shutdown_generator()
 except Exception as e: # KeyboardInterrupt or MemoryError or OpError:
     shutdown_generator()
