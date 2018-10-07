@@ -45,11 +45,11 @@ def analyse_model(model):
     return {'param_count': params}
 
 
-def resize(w, d, axis=0):
+def resize(w, d, axis=0, noise=0.03):
     if d > 0:
         shape = list(w.shape)
         shape[axis] = d
-        zeros = np.zeros(shape)
+        zeros = np.random.standard_normal(size=shape) * noise
         return np.concatenate((zeros, w, zeros), axis=axis)
     else:
         if axis == 0:
@@ -62,13 +62,23 @@ def resize(w, d, axis=0):
             return w[:, :, :, d:-d]
 
 
+def unique_name(model, prefix):
+    idx = 1
+    try:
+        while model.get_layer(prefix + str(idx)) is not None:
+            idx += 1
+    except ValueError:
+        return prefix + str(idx)
+
+
 def mutate_layer(model, layer_idx):
     layer = model.layers[layer_idx]
     layer_type = layer.__class__.__name__
     if layer_type == 'Conv2D':
         w = layer.get_weights()
         kernel = list(layer.kernel_size)
-        target = random.randint(0, 1)
+        filters = layer.filters
+        target = random.randint(0, 2)
         if target == 0 or target == 1:
             name = 'height' if target == 0 else 'width'
             if random.randint(0, 1) == 1 or kernel[target] == 1:
@@ -79,7 +89,22 @@ def mutate_layer(model, layer_idx):
                 print('Mutating layer %d: decrement %s to %d' % (layer_idx, name, kernel[target] - 2))
                 w[0] = resize(w[0], -1, axis=target)
                 kernel[target] -= 2
-            model.layers[layer_idx] = Conv2D(layer.filters, kernel, padding='same', activation='relu', weights=w)
+        elif target == 2:
+            if random.randint(0, 1) == 1 or filters == 1:
+                filters += 1
+                print('Mutating layer %d: increment filters to %d' % (layer_idx, filters))
+                shape = list(w[0].shape)
+                shape[3] = 1
+                w[0] = np.concatenate((w[0], np.random.standard_normal(size=shape) * 0.03), axis=3)
+                w[1] = np.concatenate((w[1], np.random.rand(1) * 0.03), axis=0)
+            else:
+                filters -= 1
+                fr = random.randint(0, filters)
+                print('Mutating layer %d: decrement filters to %d' % (layer_idx, filters))
+                w[0] = np.delete(w[0], fr, axis=3)
+                w[1] = np.delete(w[1], fr)
+        model.layers[layer_idx] = Conv2D(filters, kernel, padding='same', activation='relu',
+                                         weights=w, name=unique_name(model, 'conv2d_'))
         model.layers[layer_idx].build(model.layers[layer_idx - 1].output_shape)
 
 
@@ -92,7 +117,7 @@ def insert_layer(model, layer_idx):
         + np.random.randn(1, 1, filters, filters) * 0.05,
         np.random.randn(filters) * 0.03
     ]
-    layer = Conv2D(filters, 1, padding='same', activation='relu', weights=w)
+    layer = Conv2D(filters, 1, padding='same', activation='relu', weights=w, name=unique_name(model, 'conv2d_'))
     model.layers.insert(layer_idx + 1, layer)
     layer.build(input_shape)
 

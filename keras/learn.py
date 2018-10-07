@@ -144,6 +144,7 @@ try:
             current_model = mutate(models_dir, parent_name)
         else:
             print('Random model')
+            parent_name = 'random'
             current_model = random_model()
         train(current_model, train_queue, parent=parent_name, epochs=200, models_folder=models_dir)
     shutdown_generator()
