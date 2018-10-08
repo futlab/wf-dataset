@@ -47,6 +47,16 @@ def get_best_models(ms, trim=10):
     return bm
 
 
+def choose_parent_model(models, names):
+    metrics = [1000.0 / models[n].get('param_count', 1000) for n in names]
+    r = random.random() * sum(metrics)
+    t = 0
+    for i in range(len(names)):
+        t += metrics[i]
+        if t >= r:
+            return names[i]
+
+
 model_states = load_models(models_dir)
 best_models = get_best_models(model_states)
 
@@ -133,13 +143,12 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
     model_states.update({model_name : state})
     return best_loss
 
-
 try:
     parent_name = None
     while True:
         if bool(model_states) and random.random() > 0.1:
             best_models = get_best_models(model_states)
-            parent_name = best_models[random.randint(0, len(best_models) - 1)]
+            parent_name = choose_parent_model(model_states, best_models)
             print('Model %s: mutate' % parent_name)
             current_model = mutate(models_dir, parent_name)
             if current_model is None:

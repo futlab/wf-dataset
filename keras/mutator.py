@@ -45,7 +45,7 @@ def load_model(models_folder, model_name):
 
 def analyse_model(model):
     params = 0
-    for layer in model.layers[1:-1]:
+    for layer in model.layers[1:]:
         layer_type = layer.__class__.__name__
         if layer_type == 'Conv2D':
             params += int(np.prod(layer.weights[0].shape) + np.prod(layer.weights[1].shape))
@@ -60,13 +60,13 @@ def resize(w, d, axis=0, noise=0.03):
         return np.concatenate((zeros, w, zeros), axis=axis)
     else:
         if axis == 0:
-            return w[d:-d, :, :, :]
+            return w[-d:d, :, :, :]
         if axis == 1:
-            return w[:, d:-d, :, :]
+            return w[:, -d:d, :, :]
         if axis == 2:
-            return w[:, :, d:-d, :]
+            return w[:, :, -d:d, :]
         if axis == 3:
-            return w[:, :, :, d:-d]
+            return w[:, :, :, -d:d]
 
 
 def unique_name(model, prefix):
