@@ -37,7 +37,7 @@ def load_model(models_folder, model_name):
         print('Unable to load %s: ' % model_to_name, str(e))
         return None
     try:
-        model.load_weights(join(models_folder, model_name + '.hdf5'))
+        model.load_weights(join(models_folder, model_name + '_best.hdf5'))
     except Exception as e:
         print('Unable to load weights %s: ' % model_to_name, str(e))
     return model
@@ -78,9 +78,32 @@ def unique_name(model, prefix):
         return prefix + str(idx)
 
 
+def change_layer_inputs(model, layer_idx, d, filter_to_remove=-1):
+    layer = model.layers[layer_idx]
+    layer_type = layer.__class__.__name__
+    if layer_type == 'Conv2D':
+        w = layer.get_weights()
+        shape = list(w[0].shape)
+        inputs = shape[2] + d
+        print('Mutating layer %d: %srement inputs to %d' % (layer_idx, 'inc' if d > 0 else 'dec', inputs))
+        if d > 0:
+            shape[2] = d
+            w[0] = np.concatenate((w[0], np.random.standard_normal(size=shape) * 0.03), axis=2)
+        else:
+            w[0] = np.delete(w[0], filter_to_remove, axis=2)
+        layer = Conv2D(layer.filters, layer.kernel_size, padding='same', activation='relu',
+                                         weights=w)
+        shape[2] = inputs
+        #layer.build(shape)
+    else:
+        print('Unable to change_layer_input: unknown class %s', layer_type)
+    return layer
+
+
 def mutate_layer(model, layer_idx):
     layer = model.layers[layer_idx]
     layer_type = layer.__class__.__name__
+    next_layer = None
     if layer_type == 'Conv2D':
         w = layer.get_weights()
         kernel = list(layer.kernel_size)
@@ -104,15 +127,29 @@ def mutate_layer(model, layer_idx):
                 shape[3] = 1
                 w[0] = np.concatenate((w[0], np.random.standard_normal(size=shape) * 0.03), axis=3)
                 w[1] = np.concatenate((w[1], np.random.rand(1) * 0.03), axis=0)
+                next_layer = change_layer_inputs(model, layer_idx + 1, 1)
             else:
                 filters -= 1
                 fr = random.randint(0, filters)
                 print('Mutating layer %d: decrement filters to %d' % (layer_idx, filters))
                 w[0] = np.delete(w[0], fr, axis=3)
                 w[1] = np.delete(w[1], fr)
-        model.layers[layer_idx] = Conv2D(filters, kernel, padding='same', activation='relu',
-                                         weights=w, name=unique_name(model, 'conv2d_'))
-        model.layers[layer_idx].build(model.layers[layer_idx - 1].output_shape)
+                next_layer = change_layer_inputs(model, layer_idx + 1, -1, filter_to_remove=fr)
+        layer = Conv2D(filters, kernel, padding='same', activation='relu',
+                                         weights=w)
+        #layer.build(model.layers[layer_idx - 1].output_shape)
+        return layer, next_layer
+
+
+def replace_layer(model, layer_idx, new_layers):
+    layers = [l for l in model.layers]
+    layer, next_layer = new_layers
+    for i in range(1, len(layers)):
+        layers[i] = layer if i == layer_idx else layers[i]
+        layers[i] = next_layer if next_layer is not None and i == layer_idx + 1 else layers[i]
+        if i >= 1:
+            layers[i].name = 'conv2d_' + str(i)
+    return Sequential(layers)
 
 
 def insert_layer(model, layer_idx):
@@ -125,8 +162,9 @@ def insert_layer(model, layer_idx):
         np.random.randn(filters) * 0.03
     ]
     layer = Conv2D(filters, 1, padding='same', activation='relu', weights=w, name=unique_name(model, 'conv2d_'))
-    model.layers.insert(layer_idx + 1, layer)
-    layer.build(input_shape)
+    layers = [l for l in model.layers]
+    layers.insert(layer_idx + 1, layer)
+    return Sequential(layers)
 
 
 def mutate(models_folder, model_name):
@@ -135,9 +173,7 @@ def mutate(models_folder, model_name):
         return None
     action = random.random()
     layer_idx = random.randint(1, len(model.layers) - 2)
-    if action > 0.9:
-        insert_layer(model, layer_idx)
+    if action > 0.8:
+        return insert_layer(model, layer_idx)
     else:
-        mutate_layer(model, layer_idx)
-    #elif action < 1.0:#0.85:
-    return model
+        return replace_layer(model, layer_idx, mutate_layer(model, layer_idx))
