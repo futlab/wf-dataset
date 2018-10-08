@@ -15,7 +15,7 @@ def load_models(folder):
     return model_states
 
 
-def get_best_models(ms, trim=10):
+def get_best_models(ms, trim=None):
     def bl(m):
         return ms[m]['best_loss']
     bm = sorted(list(ms.keys()), key=bl)
@@ -25,8 +25,8 @@ def get_best_models(ms, trim=10):
 
 
 models = load_models('models-sam')
-best = get_best_models(models, None)
-for i in range(0, len(best) - 1):
+best = get_best_models(models, 10)
+for i in range(len(best)):
     model_name = best[i]
     model = models[model_name]
     print('%3d: (vl %.4f) %s <- %s (epochs: %d, params: %d)' % (i + 1, model.get('best_loss', None), model_name, model.get('parent', '???'), model.get('epoch', '0'), model.get('param_count', 0)))

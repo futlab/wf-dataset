@@ -78,7 +78,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
         with open(join(models_folder, model_name + '.json'), 'w') as outfile:
             outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
 
-    optimizer = Adagrad(lr=1E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
+    optimizer = Adagrad(lr=2E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
     model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=['accuracy'])
 
     def train_on_queue(queue, begin_epoch, end_epoch, best_loss, updates=100):
@@ -93,8 +93,8 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
                 u = 0
                 if validate:
                     validation_loss, validation_acc = model.test_on_batch(sample_x, sample_y)
-                    print('Epoch %d completed. vl: %.3f, va: %.3f, tl: %.3f, gets: %d, time: %.1fs'
-                          % (epoch, validation_loss, validation_acc, loss, g, time() - t))
+                    print('%s - epoch %d completed. vl: %.3f, va: %.3f, tl: %.3f, gets: %d, time: %.1fs'
+                          % (model_name, epoch, validation_loss, validation_acc, loss, g, time() - t))
                     t = None
                     validation_loss = float(validation_loss)
                     if validation_loss < best_loss:
@@ -102,8 +102,8 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
                         best_loss = validation_loss
                         model.save_weights(join(models_folder, model_name + '_best.hdf5'))
                 else:
-                    print('Epoch %d completed. tl: %.3f, gets: %d, time: %.1fs'
-                          % (epoch, loss, g, time() - t))
+                    print('%s - epoch %d completed. tl: %.3f, gets: %d, time: %.1fs'
+                          % (model_name, epoch, loss, g, time() - t))
                 g = 0
                 epoch += 1
                 if epoch >= end_epoch:
@@ -142,6 +142,8 @@ try:
             parent_name = best_models[random.randint(0, len(best_models) - 1)]
             print('Model %s: mutate' % parent_name)
             current_model = mutate(models_dir, parent_name)
+            if current_model is None:
+                continue
         else:
             print('Random model')
             parent_name = 'random'

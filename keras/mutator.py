@@ -30,9 +30,16 @@ def model_to_name(model):
 
 
 def load_model(models_folder, model_name):
-    with open(join(models_folder, model_name + '.json')) as model_file:
-        model = model_from_json(model_file.read())
-    model.load_weights(join(models_folder, model_name + '.hdf5'))
+    try:
+        with open(join(models_folder, model_name + '.json')) as model_file:
+            model = model_from_json(model_file.read())
+    except Exception as e:
+        print('Unable to load %s: ' % model_to_name, str(e))
+        return None
+    try:
+        model.load_weights(join(models_folder, model_name + '.hdf5'))
+    except Exception as e:
+        print('Unable to load weights %s: ' % model_to_name, str(e))
     return model
 
 
@@ -124,6 +131,8 @@ def insert_layer(model, layer_idx):
 
 def mutate(models_folder, model_name):
     model = load_model(models_folder, model_name)
+    if model is None:
+        return None
     action = random.random()
     layer_idx = random.randint(1, len(model.layers) - 2)
     if action > 0.9:
