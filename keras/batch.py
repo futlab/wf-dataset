@@ -18,13 +18,15 @@ output_dir = args.output
 
 #modelName = 'boe8_2x2_16-128'
 
-with open('models/' + model_name + '.json') as model_file:
+models_path = 'models-sam'
+
+with open(join(models_path, model_name + '.json')) as model_file:
     model = models.model_from_json(model_file.read())
 
-state = json.load(open('models/' + model_name + '_state.json'))
+state = json.load(open(join(models_path, model_name + '_state.json')))
 align = state.get('size', 128)
 
-model.load_weights('models/' + model_name + '_best.hdf5')
+model.load_weights(join(models_path, model_name + '_best.hdf5'))
 
 
 def mix(i, r):

@@ -18,7 +18,7 @@ sample_y = load_samples('validation-sam/output', gain=2.0)
 validate = True
 classes = ['sam']
 max_epochs = 200
-train_queue = train_generator_queue(1, (classes, classes), (32, 32), 40, every_flip=True, root='..', gain=2.0)
+train_queue = train_generator_queue(1, (classes, classes), (32, 32), 80, every_flip=True, root='..', gain=2.0)
 train_data = None
 
 root_code = [2, 3, 1,
@@ -38,7 +38,7 @@ def load_models(folder):
     return model_states
 
 
-def get_best_models(ms, trim=10):
+def get_best_models(ms, trim=16):
     def bl(m):
         return ms[m]['best_loss']
     bm = sorted(list(ms.keys()), key=bl)
@@ -49,6 +49,7 @@ def get_best_models(ms, trim=10):
 
 def choose_parent_model(models, names):
     metrics = [1000.0 / models[n].get('param_count', 1000) for n in names]
+    metrics = [m * m for m in metrics]
     r = random.random() * sum(metrics)
     t = 0
     for i in range(len(names)):
@@ -59,6 +60,11 @@ def choose_parent_model(models, names):
 
 model_states = load_models(models_dir)
 best_models = get_best_models(model_states)
+
+
+def compile_model(model):
+    optimizer = Adagrad(lr=2E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
+    model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=['accuracy'])
 
 
 def train(model, queue, models_folder='models', parent=None, epochs=20):
@@ -87,9 +93,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
         best_loss = 1E6
         with open(join(models_folder, model_name + '.json'), 'w') as outfile:
             outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
-
-    optimizer = Adagrad(lr=2E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
-    model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=['accuracy'])
+    compile_model(model)
 
     def train_on_queue(queue, begin_epoch, end_epoch, best_loss, updates=100):
         epoch = begin_epoch
@@ -103,7 +107,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
                 u = 0
                 if validate:
                     validation_loss, validation_acc = model.test_on_batch(sample_x, sample_y)
-                    print('%s - epoch %d completed. vl: %.3f, va: %.3f, tl: %.3f, gets: %d, time: %.1fs'
+                    print('%s - epoch %d completed. vl: %.4f, va: %.4f, tl: %.3f, gets: %d, time: %.1fs'
                           % (model_name, epoch, validation_loss, validation_acc, loss, g, time() - t))
                     t = None
                     validation_loss = float(validation_loss)
@@ -132,8 +136,18 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
                 acc += a
                 u += 1
 
+    is_reseted = False
     while state['epoch'] < epochs:
+        prev_bl = best_loss
         best_loss = train_on_queue(train_queue, epoch, epoch + 5, best_loss)
+        if best_loss < prev_bl and epochs - epoch < 50:
+            epochs = epoch + 50
+        if not is_reseted and epoch > 20 and best_loss > 1.5 * model_states.get(parent, {}).get('best_loss', 10):
+            print('Model %s: try to reset' % model_name)
+            with open(join(models_folder, model_name + '.json')) as model_file:
+                model = models.model_from_json(model_file.read())
+            is_reseted = True
+            compile_model(model)
         epoch += 5
         state.update({'epoch': epoch, 'best_loss': best_loss})
         model.save_weights(join(models_folder, model_name + '.hdf5'))
@@ -146,7 +160,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
 try:
     parent_name = None
     while True:
-        if bool(model_states) and random.random() > 0.1:
+        if bool(model_states) and random.random() > 0.05:
             best_models = get_best_models(model_states)
             parent_name = choose_parent_model(model_states, best_models)
             print('Model %s: mutate' % parent_name)
