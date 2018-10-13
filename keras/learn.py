@@ -63,7 +63,7 @@ best_models = get_best_models(model_states)
 
 
 def compile_model(model):
-    optimizer = Adagrad(lr=2E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
+    optimizer = Adagrad(lr=1E-3) # SGD(lr=0.0001, momentum=0.95, decay=0.0005, nesterov=False)
     model.compile(loss="binary_crossentropy", optimizer=optimizer, metrics=['accuracy'])
 
 
@@ -73,6 +73,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
     if state is not None:
         epoch = state.get('epoch', 0)
         best_loss = state.get('best_loss', 1E6)
+        best_acc = state.get('best_acc', 0)
         if epoch >= max_epochs:
             print('Model %s: skipping' % model_name)
             return best_loss
@@ -91,11 +92,12 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
         state.update(analyse_model(model))
         epoch = 0
         best_loss = 1E6
+        best_acc = 0
         with open(join(models_folder, model_name + '.json'), 'w') as outfile:
             outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
     compile_model(model)
 
-    def train_on_queue(queue, begin_epoch, end_epoch, best_loss, updates=100):
+    def train_on_queue(queue, begin_epoch, end_epoch, best_loss, best_acc, updates=100):
         epoch = begin_epoch
         global train_data
         u, g = 0, 0
@@ -107,10 +109,13 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
                 u = 0
                 if validate:
                     validation_loss, validation_acc = model.test_on_batch(sample_x, sample_y)
-                    print('%s - epoch %d completed. vl: %.4f, va: %.4f, tl: %.3f, gets: %d, time: %.1fs'
+                    print('%s - epoch %d completed. vl: %.5f, va: %.5f, tl: %.4f, gets: %d, time: %.1fs'
                           % (model_name, epoch, validation_loss, validation_acc, loss, g, time() - t))
                     t = None
                     validation_loss = float(validation_loss)
+                    validation_acc = float(validation_acc)
+                    if validation_acc > best_acc:
+                        best_acc = validation_acc
                     if validation_loss < best_loss:
                         print('Best loss!')
                         best_loss = validation_loss
@@ -121,7 +126,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
                 g = 0
                 epoch += 1
                 if epoch >= end_epoch:
-                    return best_loss
+                    return best_loss, best_acc
             if not queue.empty():
                 train_data = queue.get()
                 g += 1
@@ -139,7 +144,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
     is_reseted = False
     while state['epoch'] < epochs:
         prev_bl = best_loss
-        best_loss = train_on_queue(train_queue, epoch, epoch + 5, best_loss)
+        best_loss, best_acc = train_on_queue(train_queue, epoch, epoch + 5, best_loss, best_acc)
         if best_loss < prev_bl and epochs - epoch < 50:
             epochs = epoch + 50
         if not is_reseted and epoch > 20 and best_loss > 1.5 * model_states.get(parent, {}).get('best_loss', 10):
@@ -149,7 +154,7 @@ def train(model, queue, models_folder='models', parent=None, epochs=20):
             is_reseted = True
             compile_model(model)
         epoch += 5
-        state.update({'epoch': epoch, 'best_loss': best_loss})
+        state.update({'epoch': epoch, 'best_loss': best_loss, 'best_acc': best_acc})
         model.save_weights(join(models_folder, model_name + '.hdf5'))
         json_data = json.dumps(state, indent=2)
         with open(join(models_folder, model_name + '_state.json'), 'w') as outfile:
